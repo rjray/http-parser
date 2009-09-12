@@ -33,10 +33,14 @@ use strict;
 
 package HTTP::Parser;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 use HTTP::Request;
 use URI;
+
+# token is (RFC 2616, ASCII)
+my $Token =
+ qr/[\x21\x23-\x27\x2a\x2b\x2d\x2e\x30-\x39\x41-\x5a\x5e-\x7a\x7c\x7e]+/;
 
 
 =head2 new
@@ -46,7 +50,7 @@ Create a new HTTP::Parser object.
 =cut
 sub new {
   my $class = shift;
-  my $self = bless { state => 'header', data => '' }, ref $class || $class;
+  my $self = bless { state => 'blank', data => '' }, ref $class || $class;
   return $self;
 }
 
@@ -93,33 +97,40 @@ sub add {
   my ($self,$s) = @_;
   $s = '' if not defined $s;
 
-  my $state = $self->{state};
   $self->{data} .= $s;
 
+  # pre-header blank lines are allowed (RFC 2616 4.1)
+  if($self->{state} eq 'blank') {
+    $self->{data} =~ s/^(\x0d?\x0a)+//;
+    return -2 unless length $self->{data};
+    $self->{state} = 'header';  # done with blank lines; fall through
+  }
+
   # still waiting for the header
-  if($state eq 'header') {
+  if($self->{state} eq 'header') {
     # double line break indicates end of header; parse it
-    return $self->_parse_header(length $1)
-     if $self->{data} =~ /^(.*?)\x0d?\x0a\x0d?\x0a/s;
+    if($self->{data} =~ /^(.*?)\x0d?\x0a\x0d?\x0a/s) {
+      return $self->_parse_header(length $1);
+    }
     return -2;  # still waiting for unknown amount of header lines
 
   # waiting for main body of request
-  } elsif($state eq 'body') {
+  } elsif($self->{state} eq 'body') {
     return $self->_parse_body();
 
   # chunked data
-  } elsif($state eq 'chunked') {
+  } elsif($self->{state} eq 'chunked') {
     return $self->_parse_chunk();
 
   # trailers
-  } elsif($state eq 'trailer') {
+  } elsif($self->{state} eq 'trailer') {
     # double line break indicates end of trailer; parse it
     return $self->_parse_header(length $1,1)
      if $self->{data} =~ /^(.*?)\x0d?\x0a\x0d?\x0a/s;
     return -1;  # still waiting for unknown amount of trailer data
   }
 
-  die "unknown state '$state'";
+  die "unknown state '$self->{state}'";
 }
 
 
@@ -186,7 +197,7 @@ sub _parse_header {
   unless($trailer) {
     my ($method,$uri,$http) = split / /,$request;
     die "bad request line '$request'"
-     unless $http and $http =~ /^HTTP\/(\d+)\.(\d+)$/;
+     unless $http and $http =~ /^HTTP\/(\d+)\.(\d+)$/i;
     my ($major,$minor) = ($1,$2);
     $req = $self->{req} = HTTP::Request->new($method,URI->new($uri));
     $req->header(X_HTTP_Version => "$major.$minor");  # pseudo-header

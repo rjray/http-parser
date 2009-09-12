@@ -11,15 +11,13 @@ BEGIN { use_ok('HTTP::Parser') };
 
 #########################
 
-# Insert your test code below, the Test::More module is use()ed here so read
-# its man page ( perldoc Test::More ) for help writing this test script.
-
 my $parser = HTTP::Parser->new();
 my @lines = ('GET / HTTP/1.1','Host: localhost','Connection: close','');
 my @ok = (-2,-2,-2,0);
 
 # <4>
 my $result;
+$parser->add("\x0a\x0a");  # blank lines before Request-Line should be ignored
 for my $line(@lines) {
   $result = $parser->add("$line\x0d\x0a");
   is($result,shift @ok,"Passing '$line'");
