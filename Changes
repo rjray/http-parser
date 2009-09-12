@@ -1,12 +1,20 @@
 Revision history for Perl extension HTTP::Parser.
 
-0.01  Sat Jan  3 16:02:34 2004
-  - original author David B. Robins <dbrobins@davidrobins.net>
-  - original version; created by h2xs 1.22 with options -AX -n HTTP::Parser
-  - module originally created time November 2003
+0.03  2007-02-24
+  - reverse change file order (now reverse chronological, newest first)
+  - change chunk parser to skip chunk-extension and allow spaces (rt.cpan.org
+     #14092)
+  - add ability to parse HTTP response into HTTP::Response too (rt.cpan.org
+     #7652, 7654, based on patch from mfr AT hybyte DOT com)
+  - added new tests for new response parsing capability
 
-0.02  Wed Jan 28 08:43:19 2004
+0.02  2004-01-28
   - incorporate fixes proposed by Anthony D. Minkoff <adminkoff@cox.net>:
     literal "HTTP" should be case insensitive (RFC 2616, sections 2.1, 3.1)
     allow blank lines before Request-Line (RFC 2616, section 4.1; "SHOULD")
+
+0.01  2004-01-03
+  - original author David B. Robins <dbrobins@davidrobins.net>
+  - original version; created by h2xs 1.22 with options -AX -n HTTP::Parser
+  - module originally created November 2003
 

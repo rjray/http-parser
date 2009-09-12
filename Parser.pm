@@ -1,6 +1,6 @@
 =head1 NAME
 
-HTTP::Parser - parse HTTP/1.1 request into HTTP::Request object
+HTTP::Parser - parse HTTP/1.1 request into HTTP::Request/Response object
 
 =head1 SYNOPSIS
 
@@ -33,9 +33,10 @@ use strict;
 
 package HTTP::Parser;
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 use HTTP::Request;
+use HTTP::Response;
 use URI;
 
 # token is (RFC 2616, ASCII)
@@ -43,14 +44,38 @@ my $Token =
  qr/[\x21\x23-\x27\x2a\x2b\x2d\x2e\x30-\x39\x41-\x5a\x5e-\x7a\x7c\x7e]+/;
 
 
-=head2 new
+=head2 new ( named params... )
 
-Create a new HTTP::Parser object.
+Create a new HTTP::Parser object.  Takes named parameters, e.g.:
+
+ my $parser = HTTP::Parser->new(request => 1);
+
+=over 4
+
+=item request
+
+Allows or denies parsing an HTTP request and returning an C<HTTP::Request>
+object.
+
+=item response
+
+Allows or denies parsing an HTTP response and returning an C<HTTP::Response>
+object.
+
+=back
+
+If you pass neither C<request> nor C<response>, only requests are parsed (for
+backwards compatibility); if you pass either, the other defaults to false
+(disallowing both requests and responses is a fatal error).
 
 =cut
 sub new {
-  my $class = shift;
-  my $self = bless { state => 'blank', data => '' }, ref $class || $class;
+  my ($class, %p) = @_;
+  $p{request} = 1 unless exists $p{response} or exists $p{request};
+  die 'must allow request or response to be parsed'
+   unless $p{request} or $p{response};
+  @p{qw(state data)} = ('blank', '');
+  my $self = bless \%p, ref $class || $class;
   return $self;
 }
 
@@ -63,7 +88,7 @@ Parse request.  Returns:
 
 =item  0
 
-if finished (call request() to get an HTTP::Request object)
+if finished (call C<object> to get an HTTP::Request or Response object)
 
 =item -1
 
@@ -156,13 +181,18 @@ sub extra {
 }
 
 
-=head2 request
+=head2 object
 
-Returns the current request.  Only useful after a request has been parsed.
+Returns the object request.  Only useful after the parse has completed.
 
 =cut
+sub object {
+  shift->{obj}
+}
+
+# keep this for compatibility with 0.02
 sub request {
-  shift->{req}
+  shift->{obj}
 }
 
 
@@ -192,38 +222,54 @@ sub _parse_header {
     }
   }
 
-  # parse request-line
-  my $req;
+  # parse request or response line
+  my $obj;
   unless($trailer) {
-    my ($method,$uri,$http) = split / /,$request;
-    die "bad request line '$request'"
-     unless $http and $http =~ /^HTTP\/(\d+)\.(\d+)$/i;
-    my ($major,$minor) = ($1,$2);
-    $req = $self->{req} = HTTP::Request->new($method,URI->new($uri));
-    $req->header(X_HTTP_Version => "$major.$minor");  # pseudo-header
+    my ($major, $minor);
+
+    # is it an HTTP response?
+    if ($request =~ /^HTTP\/(\d+)\.(\d+) /i) {
+      die 'HTTP responses not allowed' unless $self->{response};
+      ($major,$minor) = ($1,$2);
+      my (undef, $state, $msg) = split / /,$request;
+      $obj = $self->{obj} = HTTP::Response->new($state, $msg);
+
+    # perhaps a request?
+    } else {
+      my ($method,$uri,$http) = split / /,$request;
+      die "'$request' is not the start of a valid HTTP request or response"
+       unless $http and $http =~ /^HTTP\/(\d+)\.(\d+)$/i;
+      ($major,$minor) = ($1,$2);
+      die 'HTTP requests not allowed' unless $self->{request};
+      $obj = $self->{obj} = HTTP::Request->new($method, URI->new($uri));
+    }
+
+    $obj->header(X_HTTP_Version => "$major.$minor");  # pseudo-header
+
+  # we've already seen the initial line and created the object
   } else {
-    $req = $self->{req};
+    $obj = $self->{obj};
   }
 
   # import headers
   my $token = qr/[^][\x00-\x1f\x7f()<>@,;:\\"\/?={} \t]+/;
   for $header(@header) {
     die "bad header name in '$header'" unless $header =~ s/^($token):[\t ]*//;
-    $req->push_header($1 => $header);
+    $obj->push_header($1 => $header);
   }
 
   # if we're parsing trailers we don't need to look at content
   return 0 if $trailer;
 
   # see what sort of content we have, if any
-  if(my $length = $req->header('content_length')) {
+  if(my $length = $obj->header('content_length')) {
     die "bad content-length '$length'" unless $length =~ /^(\d+)$/;
     $self->{state} = 'body';
     return $self->_parse_body();
   }
 
   # check for transfer-encoding, and handle chunking
-  if(my @te = $req->header('transfer_encoding')) {
+  if(my @te = $obj->header('transfer_encoding')) {
     if(grep { lc $_ eq 'chunked' } @te) {
       $self->{state} = 'chunked';
       return $self->_parse_chunk();
@@ -242,9 +288,9 @@ sub _parse_header {
 #
 sub _parse_body {
   my $self = shift;
-  my $length = $self->{req}->header('content_length');
+  my $length = $self->{obj}->header('content_length');
   if(length $self->{data} >= $length) {
-    $self->{req}->content(substr($self->{data},0,$length,''));
+    $self->{obj}->content(substr($self->{data},0,$length,''));
     return 0;
   }
   return $length-length $self->{data};
@@ -262,7 +308,7 @@ CHUNK:
 
   # need beginning of chunk with size
   if(not $self->{chunk}) {
-    if($self->{data} =~ s/^([0-9a-fA-F]+)[^\x0a]*?\x0d?\x0a//) {
+    if($self->{data} =~ s/^([0-9a-fA-F]+)[^\x0d\x0a]*?\x0d?\x0a//) {
 
       # a zero-size chunk marks the end
       unless($self->{chunk} = hex $1) {
@@ -289,7 +335,7 @@ CHUNK:
     if(length $self->{data} > $self->{chunk} and
      substr($self->{data},$self->{chunk},2) =~ /^(\x0d?\x0a)/) {
       my $crlf = $1;
-      $self->{req}->add_content(substr($self->{data},0,delete $self->{chunk}));
+      $self->{obj}->add_content(substr($self->{data},0,delete $self->{chunk}));
       substr($self->{data},0,length $crlf) = '';
 
       # got chunks?
@@ -307,7 +353,7 @@ David Robins E<lt>dbrobins@davidrobins.netE<gt>
 
 =head1 SEE ALSO
 
-L<HTTP::Request>.
+L<HTTP::Request>, L<HTTP::Response>.
 
 =cut
 

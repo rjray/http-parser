@@ -1,11 +1,11 @@
 HTTP/Parser
 ===========
 
-HTTP::Parser is a stateful HTTP request parsing module.
+HTTP::Parser is a stateful HTTP request/response parsing module.
 
 It accepts chunks of data passed to it and returns either a completion hint
-or an HTTP::Request object when it has the entire request.  It was originally
-written to be part of a simple Event.pm-based HTTP server.
+or an HTTP::Request (or Response) object when it has the entire request.  It
+was originally written to be part of a simple Event.pm-based HTTP server.
 
 e.g.
 
@@ -42,11 +42,12 @@ This module requires these other modules and libraries:
   perl 5.6.1
 
   HTTP::Request
+  HTTP::Response (both part of libwww-perl)
   URI
 
 COPYRIGHT AND LICENCE
 
-Copyright (C) 2004 David B. Robins
+Copyright (C) 2004-2007 David B. Robins
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 
