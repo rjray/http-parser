@@ -1,5 +1,14 @@
 Revision history for Perl extension HTTP::Parser.
 
+0.04  2007-11-10
+  - when parsing chunks, only remove current chunk from data buffer; don't
+     clear it (rt.cpan.org #30005, patch from David Cannings)
+  - in the "be lenient in what you accept" vein, allow the HTTP response
+     status line to not have a space after the version (contrary to RFC 2616
+     6.1, but apparently broken implementations exist), and strip whitespace
+     from the Content-Length header (rt.cpan.org #30338, patch from David
+     Cannings)
+
 0.03  2007-02-24
   - reverse change file order (now reverse chronological, newest first)
   - change chunk parser to skip chunk-extension and allow spaces (rt.cpan.org

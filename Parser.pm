@@ -33,7 +33,7 @@ use strict;
 
 package HTTP::Parser;
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 use HTTP::Request;
 use HTTP::Response;
@@ -228,7 +228,7 @@ sub _parse_header {
     my ($major, $minor);
 
     # is it an HTTP response?
-    if ($request =~ /^HTTP\/(\d+)\.(\d+) /i) {
+    if ($request =~ /^HTTP\/(\d+)\.(\d+)/i) {
       die 'HTTP responses not allowed' unless $self->{response};
       ($major,$minor) = ($1,$2);
       my (undef, $state, $msg) = split / /,$request;
@@ -263,6 +263,7 @@ sub _parse_header {
 
   # see what sort of content we have, if any
   if(my $length = $obj->header('content_length')) {
+    s/^\s+//, s/\s+$// for $length;
     die "bad content-length '$length'" unless $length =~ /^(\d+)$/;
     $self->{state} = 'body';
     return $self->_parse_body();
@@ -335,8 +336,11 @@ CHUNK:
     if(length $self->{data} > $self->{chunk} and
      substr($self->{data},$self->{chunk},2) =~ /^(\x0d?\x0a)/) {
       my $crlf = $1;
-      $self->{obj}->add_content(substr($self->{data},0,delete $self->{chunk}));
+      $self->{obj}->add_content(substr($self->{data},0,$self->{chunk}));
       substr($self->{data},0,length $crlf) = '';
+
+      # remove data from the buffer that we've already parsed
+      $self->{data} = substr($self->{data},delete $self->{chunk});
 
       # got chunks?
       goto CHUNK;
