@@ -74,7 +74,7 @@ sub new {
   $p{request} = 1 unless exists $p{response} or exists $p{request};
   die 'must allow request or response to be parsed'
    unless $p{request} or $p{response};
-  @p{qw(state data)} = ('blank', '');
+  @p{qw(state data strict_compliance)} = ('blank', '', 1);
   my $self = bless \%p, ref $class || $class;
   return $self;
 }
@@ -275,6 +275,18 @@ sub _parse_header {
       $self->{state} = 'chunked';
       return $self->_parse_chunk();
     }
+  }
+
+  # perhaps we do have content, but the server didn't include a length
+  # section 14.13 of the spec says "SHOULD" unless there are reasons not
+  # to, some bad servers still don't include one
+  if(length $self->{data} && !defined $obj->header('content_length')) {
+    # FIXME: possibly die here unless the user specifically asks us to be non-compliant
+    # die "no content-length header but we still have content" if $self->{strict_compliance};
+
+    # FIXME: should we set a state here?
+    $self->{obj}->content($self->{data});
+    return 0;
   }
 
   # else we have no content so return success
