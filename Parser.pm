@@ -231,7 +231,7 @@ sub _parse_header {
     if ($request =~ /^HTTP\/(\d+)\.(\d+)/i) {
       die 'HTTP responses not allowed' unless $self->{response};
       ($major,$minor) = ($1,$2);
-      my (undef, $state, $msg) = split / /,$request;
+      my (undef, $state, $msg) = split / /, $request, 3;
       $obj = $self->{obj} = HTTP::Response->new($state, $msg);
 
     # perhaps a request?
